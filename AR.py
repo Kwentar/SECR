@@ -37,7 +37,7 @@ def create_samples(photos_dir='images/', camera_index=0, show_chess=True):
                 gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
                 ret, corners = cv2.findChessboardCorners(gray, chessboard_size, None)
                 if ret:
-                    cv2.cornerSubPix(gray, corners, (11, 11), (-1, -1), criteria)
+                    cv2.cornerSubPix(gray, corners, (11, 11), (3, 3), criteria)
                     cv2.drawChessboardCorners(gray, chessboard_size, corners, ret)
                     cv2.imshow('chess', gray)
             c = cv2.waitKey(1)
@@ -85,7 +85,7 @@ def calibrate(photos_dir='images/', result_filename='test.npz'):
 
     # calculate camera distortion
     rms, camera_matrix, dist_coefs, rvecs, tvecs = cv2.calibrateCamera(obj_points, img_points, (w, h), None, None)
-    np.savez(result_filename, rms=rms, mtx=camera_matrix, coef=dist_coefs, rvecs=rvecs, tvecs=tvecs)
+    np.savez(result_filename, camera_matrix=camera_matrix, dist_coefs=dist_coefs)
 
 
 def draw(img, corners, img_pts):
@@ -97,10 +97,9 @@ def draw(img, corners, img_pts):
     :return: img with axises
     """
     corner = tuple(corners[0].ravel())
-    img = cv2.line(img, corner, tuple(img_pts[0].ravel()), (255, 0, 0), 5)
-    img = cv2.line(img, corner, tuple(img_pts[1].ravel()), (0, 255, 0), 5)
-    img = cv2.line(img, corner, tuple(img_pts[2].ravel()), (0, 0, 255), 5)
-    return img
+    cv2.line(img, corner, tuple(img_pts[0].ravel()), (255, 0, 0), 5)
+    cv2.line(img, corner, tuple(img_pts[1].ravel()), (0, 255, 0), 5)
+    cv2.line(img, corner, tuple(img_pts[2].ravel()), (0, 0, 255), 5)
 
 
 def draw_model(calibration_filename='test.npz', model_name='star.stl'):
@@ -111,7 +110,8 @@ def draw_model(calibration_filename='test.npz', model_name='star.stl'):
     :return: None
     """
     with np.load(calibration_filename) as X:
-        _, mtx, dist, _, _ = [X[i] for i in ('rms', 'mtx', 'coef', 'rvecs', 'tvecs')]
+        camera_matrix = X['camera_matrix']
+        dist_coefs = X['dist_coefs']
         pattern_points = np.zeros((np.prod(chessboard_size), 3), np.float32)
         pattern_points[:, :2] = np.indices(chessboard_size).T.reshape(-1, 2)
 
@@ -125,13 +125,11 @@ def draw_model(calibration_filename='test.npz', model_name='star.stl'):
                 gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
                 found, corners = cv2.findChessboardCorners(gray, chessboard_size, None)
                 if found:
-                    corners2 = cv2.cornerSubPix(gray, corners, (11, 11), (-1, -1), criteria)
-                    ret, rvecs, tvecs = cv2.solvePnP(pattern_points, corners2, mtx, dist)
-                    # cv2.drawChessboardCorners(gray, chessboard_size, corners, ret)
+                    cv2.cornerSubPix(gray, corners, (11, 11), (3, 3), criteria)
+                    ret, rvecs, tvecs = cv2.solvePnP(pattern_points, corners, camera_matrix, dist_coefs)
                     for vector in your_mesh.vectors:
-                        imgpts, jac = cv2.projectPoints(vector, rvecs, tvecs, mtx, dist)
-                        draw_triangle(frame, imgpts)
-                        # frame = draw_cube(frame, corners2, imgpts)
+                        img_pts, jac = cv2.projectPoints(vector, rvecs, tvecs, camera_matrix, dist_coefs)
+                        draw_triangle(frame, img_pts)
 
                     cv2.imshow('chess', frame)
                 c = cv2.waitKey(1)
@@ -148,10 +146,11 @@ def draw_axis(calibration_filename='test.npz'):
     :return: None
     """
     with np.load(calibration_filename) as X:
-        _, mtx, dist, _, _ = [X[i] for i in ('rms', 'mtx', 'coef', 'rvecs', 'tvecs')]
+        camera_matrix = X['camera_matrix']
+        dist_coefs = X['dist_coefs']
         pattern_points = np.zeros((np.prod(chessboard_size), 3), np.float32)
         pattern_points[:, :2] = np.indices(chessboard_size).T.reshape(-1, 2)
-        axis = np.float32([[3, 0, 0], [0, 3, 0], [0, 0, -3]]).reshape(-1, 3)
+        axis = np.float32([[0, 0, 0], [3, 0, 0], [0, 3, 0], [0, 0, -3]]).reshape(-1, 3)
         cap = cv2.VideoCapture()
         cap.open(0)
         while True:
@@ -161,10 +160,10 @@ def draw_axis(calibration_filename='test.npz'):
                 gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
                 found, corners = cv2.findChessboardCorners(gray, chessboard_size, None)
                 if found:
-                    corners2 = cv2.cornerSubPix(gray, corners, (11, 11), (-1, -1), criteria)
-                    ret, rvecs, tvecs = cv2.solvePnP(pattern_points, corners2, mtx, dist)
-                    imgpts, jac = cv2.projectPoints(axis, rvecs, tvecs, mtx, dist)
-                    draw_lines(frame, corners[0].ravel(), imgpts)
+                    cv2.cornerSubPix(gray, corners, (11, 11), (3, 3), criteria)
+                    ret, rvecs, tvecs = cv2.solvePnP(pattern_points, corners, camera_matrix, dist_coefs)
+                    img_pts, jac = cv2.projectPoints(axis, rvecs, tvecs, camera_matrix, dist_coefs)
+                    draw_lines(frame, img_pts)
 
                     cv2.imshow('chess', frame)
                 c = cv2.waitKey(1)
@@ -181,13 +180,14 @@ def draw_cube(calibration_filename='test.npz'):
     :return: None
     """
     with np.load(calibration_filename) as X:
-        _, mtx, dist, _, _ = [X[i] for i in ('rms', 'mtx', 'coef', 'rvecs', 'tvecs')]
+        camera_matrix = X['camera_matrix']
+        dist_coefs = X['dist_coefs']
         pattern_points = np.zeros((np.prod(chessboard_size), 3), np.float32)
         pattern_points[:, :2] = np.indices(chessboard_size).T.reshape(-1, 2)
 
         cap = cv2.VideoCapture()
         cap.open(0)
-        axis = np.float32([[0, 0, 0], [0, 3, 0], [3, 3, 0], [3, 0, 0],
+        cube_points = np.float32([[0, 0, 0], [0, 3, 0], [3, 3, 0], [3, 0, 0],
                            [0, 0, -3], [0, 3, -3], [3, 3, -3], [3, 0, -3]])
         while True:
             ret, frame = cap.read()
@@ -196,11 +196,11 @@ def draw_cube(calibration_filename='test.npz'):
                 gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
                 found, corners = cv2.findChessboardCorners(gray, chessboard_size, None)
                 if found:
-                    corners2 = cv2.cornerSubPix(gray, corners, (11, 11), (-1, -1), criteria)
-                    ret, rvecs, tvecs = cv2.solvePnP(pattern_points, corners2, mtx, dist)
+                    cv2.cornerSubPix(gray, corners, (11, 11), (3, 3), criteria)
+                    ret, rvecs, tvecs = cv2.solvePnP(pattern_points, corners, camera_matrix, dist_coefs)
                     # cv2.drawChessboardCorners(gray, chessboard_size, corners, ret)
-                    imgpts, jac = cv2.projectPoints(axis, rvecs, tvecs, mtx, dist)
-                    draw_cube_model(frame, corners2, imgpts)
+                    img_pts, jac = cv2.projectPoints(cube_points, rvecs, tvecs, camera_matrix, dist_coefs)
+                    draw_cube_model(frame, img_pts)
 
                     cv2.imshow('chess', frame)
                 c = cv2.waitKey(1)
@@ -210,31 +210,25 @@ def draw_cube(calibration_filename='test.npz'):
         cv2.destroyAllWindows()
 
 
-def draw_lines(img, corner, imgpts):
-    img = cv2.line(img, tuple(corner), tuple(imgpts[0].ravel()), (255,0,0), 5)
-    img = cv2.line(img, tuple(corner), tuple(imgpts[1].ravel()), (0,255,0), 5)
-    img = cv2.line(img, tuple(corner), tuple(imgpts[2].ravel()), (0,0,255), 5)
-    return img
+def draw_lines(img,  img_pts):
+    for i, color in zip(range(1,4), [(0, 0, 255), (0, 255, 0), (255, 0, 0)]):
+        cv2.line(img, tuple(img_pts[0].ravel()), tuple(img_pts[i].ravel()), color, 5)
 
 
 def draw_triangle(img, points):
     points = np.int32(points).reshape(-1, 2)
-    img = cv2.drawContours(img, [points], -1, (0, 255, 0), -3)
+    cv2.drawContours(img, [points], -1, (0, 255, 0), -3)
     cv2.line(img, tuple(points[0]), tuple(points[1]), 255, 1)
     cv2.line(img, tuple(points[1]), tuple(points[2]), 255, 1)
     cv2.line(img, tuple(points[2]), tuple(points[0]), 255, 1)
 
 
-def draw_cube_model(img, corners, imgpts):
-    imgpts = np.int32(imgpts).reshape(-1, 2)
-    # draw ground floor in green
-    img = cv2.drawContours(img, [imgpts[:4]], -1, (0, 255, 0), -3)
-    # draw pillars in blue color
+def draw_cube_model(img, img_pts):
+    img_pts = np.int32(img_pts).reshape(-1, 2)
+    cv2.drawContours(img, [img_pts[:4]], -1, (0, 255, 0), -3)
     for i, j in zip(range(4), range(4, 8)):
-        img = cv2.line(img, tuple(imgpts[i]), tuple(imgpts[j]), 255, 3)
-        # draw top layer in red color
-        img = cv2.drawContours(img, [imgpts[4:]], -1, (0, 0, 255), 3)
-    return img
+        cv2.line(img, tuple(img_pts[i]), tuple(img_pts[j]), 255, 3)
+        cv2.drawContours(img, [img_pts[4:]], -1, (0, 0, 255), 3)
 
 
 first_program()
