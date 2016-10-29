@@ -8,6 +8,7 @@ from stl import mesh
 
 criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 30, 0.001)
 chessboard_size = (7, 9)
+FLANN_INDEX_LSH = 6
 
 
 def first_program():
@@ -109,6 +110,7 @@ def draw_model(calibration_filename='test.npz', camera_index=0, model_name='star
     """
     Find and draw 3D stl model
     :param calibration_filename: file with camera params
+    :param camera_index: camera index for OpenCV VideoCapture
     :param model_name: stl model
     :return: None
     """
@@ -146,6 +148,7 @@ def draw_axis(calibration_filename='test.npz', camera_index=0):
     """
     Find and draw 3D axis on chessboard
     :param calibration_filename: file with camera params
+    :param camera_index: camera index for OpenCV VideoCapture
     :return: None
     """
     with np.load(calibration_filename) as X:
@@ -180,6 +183,7 @@ def draw_cube(calibration_filename='test.npz', camera_index=0):
     """
     Find and draw 3D axis on chessboard
     :param calibration_filename: file with camera params
+    :param camera_index: camera index for OpenCV VideoCapture
     :return: None
     """
     with np.load(calibration_filename) as X:
@@ -214,6 +218,12 @@ def draw_cube(calibration_filename='test.npz', camera_index=0):
 
 
 def draw_lines(img,  img_pts):
+    """
+    draw three lines on img
+    :param img: image for drawing
+    :param img_pts: 4 points, draw 0-1, 0-2, 0-3 lines
+    :return: None
+    """
     try:
         for i, color in zip(range(1, 4), [(0, 0, 255), (0, 255, 0), (255, 0, 0)]):
             cv2.line(img, tuple(img_pts[0].ravel()), tuple(img_pts[i].ravel()), color, 5)
@@ -222,6 +232,12 @@ def draw_lines(img,  img_pts):
 
 
 def draw_triangle(img, points):
+    """
+    draw triangle on img
+    :param img: img for drawing
+    :param points: 3 points, draw three lines, 0-1, 1-2 and 2-0
+    :return: None
+    """
     points = np.int32(points).reshape(-1, 2)
     cv2.drawContours(img, [points], -1, (0, 255, 0), -3)
     cv2.line(img, tuple(points[0]), tuple(points[1]), 255, 1)
@@ -230,6 +246,12 @@ def draw_triangle(img, points):
 
 
 def draw_cube_model(img, img_pts):
+    """
+    draw cube model on img
+    :param img: image for drawing
+    :param img_pts:  vertexes of cube
+    :return: None
+    """
     img_pts = np.int32(img_pts).reshape(-1, 2)
     cv2.drawContours(img, [img_pts[:4]], -1, (0, 255, 0), -3)
     for i, j in zip(range(4), range(4, 8)):
@@ -238,6 +260,12 @@ def draw_cube_model(img, img_pts):
 
 
 def get_des(image, n_features=1500):
+    """
+    Ger ORB features from image
+    :param image: image for finding
+    :param n_features: count features
+    :return: ORB features
+    """
     orb = cv2.ORB_create(n_features)
     if len(image.shape) == 3:
         image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
@@ -246,9 +274,14 @@ def get_des(image, n_features=1500):
 
 
 def get_matches(des_marker, des_image):
+    """
+    find matches for ORB features
+    :param des_marker: source marker
+    :param des_image: destination image
+    :return: founded matches
+    """
     if des_marker is None or des_image is None:
         return []
-    FLANN_INDEX_LSH = 6
     index_params = dict(algorithm=FLANN_INDEX_LSH, table_number=6, key_size=12, multi_probe_level=1)
     search_params = dict(checks=50)  # or pass empty dictionary
     matcher = cv2.FlannBasedMatcher(index_params, search_params)
@@ -273,28 +306,47 @@ def get_matches(des_marker, des_image):
 
 
 def test_match(marker_name='marker.jpg', camera_index=0):
+    """
+    test matches for ORB features
+    :param marker_name: image with marker
+    :param camera_index: camera index for OpenCV VideoCapture
+    :return: None
+    """
     cap = cv2.VideoCapture()
-    ret, image = cap.read(camera_index)
+    cap.open(camera_index)
     marker = cv2.imread(marker_name)
 
-    while ret:
-        kp_marker, des_marker = get_des(marker)
-        kp_image, des_image = get_des(image)
-
-        good = get_matches(des_marker, des_image)
-
-        # cv2.imshow("image", cv2.drawKeypoints(image,kp_image,color=(0,255,0), flags=0));
-        # cv2.imshow("marker", cv2.drawKeypoints(marker,kp_marker,color=(0,255,0), flags=0));
-        kp_marker = [kp_marker[pt.trainIdx] for pt in good]
-        kp_image = [kp_image[pt.queryIdx] for pt in good]
-        cv2.imshow("marker", cv2.drawKeypoints(marker, kp_marker, color=(0, 255, 0), flags=0))
-        cv2.imshow("image", cv2.drawKeypoints(image, kp_image, color=(0, 255, 0), flags=0))
-        if 27 == cv2.waitKey(1):
-            break
+    while True:
         ret, image = cap.read()
+        if ret:
+            kp_marker, des_marker = get_des(marker)
+            kp_image, des_image = get_des(image)
+
+            good = get_matches(des_marker, des_image)
+
+            # cv2.imshow("image", cv2.drawKeypoints(image,kp_image,color=(0,255,0), flags=0));
+            # cv2.imshow("marker", cv2.drawKeypoints(marker,kp_marker,color=(0,255,0), flags=0));
+            kp_marker = [kp_marker[pt.trainIdx] for pt in good]
+            kp_image = [kp_image[pt.queryIdx] for pt in good]
+            image2 = image.copy()
+            marker2 = marker.copy()
+
+            cv2.drawKeypoints(marker, kp_marker, marker2, color=(0, 255, 0), flags=0)
+            cv2.drawKeypoints(image, kp_image, image2, color=(0, 255, 0), flags=0)
+            cv2.imshow("marker", marker2)
+            cv2.imshow("image", image2)
+            if cv2.waitKey(1) & 0xFF == ord('q'):
+                break
 
 
 def draw_axis_ORB(marker='marker.jpg', calibration_filename='test.npz', camera_index=0):
+    """
+    draw axis with ORB features
+    :param marker: image with marker
+    :param calibration_filename:
+    :param camera_index: camera index for OpenCV VideoCapture
+    :return: None
+    """
     marker = cv2.imread(marker)
     kp_marker, des_marker = get_des(marker)
 
@@ -328,10 +380,12 @@ def draw_axis_ORB(marker='marker.jpg', calibration_filename='test.npz', camera_i
         cap.release()
         cv2.destroyAllWindows()
 
-draw_axis_ORB(camera_index=1)
+
 # first_program()
 # create_samples()
 # calibrate()
-# draw_axis()
-# draw_cube()
-# draw_model(model_name='Moon.stl')
+# draw_axis(camera_index=1)
+# draw_cube(camera_index=1)
+# draw_model(model_name='Moon.stl', camera_index=1)
+# test_match(camera_index=1)
+draw_axis_ORB(camera_index=1)
