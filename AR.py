@@ -386,6 +386,6 @@ def draw_axis_ORB(marker='marker.jpg', calibration_filename='test.npz', camera_i
 # calibrate()
 # draw_axis(camera_index=1)
 # draw_cube(camera_index=1)
-# draw_model(model_name='Moon.stl', camera_index=1)
+# draw_model(model_name='stl_models/Moon.stl', camera_index=1)
 # test_match(camera_index=1)
 draw_axis_ORB(camera_index=1)
